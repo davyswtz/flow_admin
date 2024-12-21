@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Catálogo</title>
+    <link rel="stylesheet" href="styles/admin.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="admin-panel">
+        <div class="container">
+            <header class="header">
+                <h1>Administração do Catálogo</h1>
+                <div class="header-buttons">
+                    <button class="btn btn-primary" onclick="AuthManager.logout()">
+                        <i class="fas fa-sign-out-alt"></i>
+                        Logout
+                    </button>
+                </div>
+            </header>
+
+            <main class="main-content">
+                <section id="add-section">
+                    <div class="product-form">
+                        <h2>Adicionar Novo Produto</h2>
+                        <form id="productForm">
+                            <div class="form-group">
+                                <label for="productName">Nome do Produto</label>
+                                <input type="text" id="productName" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="productDescription">Descrição</label>
+                                <textarea id="productDescription" required></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label for="productCategory">Categoria</label>
+                                <select id="productCategory" required>
+                                    <option value="">Selecione uma categoria</option>
+                                    <option value="bags">Bags</option>
+                                    <option value="bermudas">Bermudas</option>
+                                    <option value="bones">Bonés</option>
+                                    <option value="calcas">Calças</option>
+                                    <option value="camisas">Camisas</option>
+                                    <option value="moletons">Moletons</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="productImage">Imagem do Produto</label>
+                                <input type="file" id="productImage" accept="image/*" required>
+                                <div id="imagePreview" class="image-preview"></div>
+                            </div>
+                            <div class="form-buttons">
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-save"></i>
+                                    Salvar Produto
+                                </button>
+                                <button type="button" class="btn btn-secondary" onclick="clearForm()">
+                                    <i class="fas fa-times"></i>
+                                    Limpar
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </section>
+
+                <section id="list-section">
+                    <h2>Produtos Cadastrados</h2>
+                    <div id="productsList" class="products-list"></div>
+                </section>
+            </main>
+        </div>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script src="../catalogo_flow/js/catalog-manager.js"></script>
+    <script>
+        // Verificar autenticação
+        if (!AuthManager.checkLogin()) {
+            window.location.href = 'login.html';
+        }
+
+        // Preview de imagem
+        document.getElementById('productImage').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            const preview = document.getElementById('imagePreview');
+            
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    preview.style.backgroundImage = `url(${e.target.result})`;
+                    preview.style.display = 'block';
+                }
+                reader.readAsDataURL(file);
+            } else {
+                preview.style.backgroundImage = '';
+                preview.style.display = 'none';
+            }
+        });
+
+        // Adicionar produto
+        document.getElementById('productForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const submitButton = e.target.querySelector('button[type="submit"]');
+            submitButton.disabled = true;
+            submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Salvando...';
+
+            try {
+                const imageFile = document.getElementById('productImage').files[0];
+                if (!imageFile) {
+                    throw new Error('Selecione uma imagem para o produto');
+                }
+
+                const imageBase64 = await convertImageToBase64(imageFile);
+                const productData = {
+                    name: document.getElementById('productName').value,
+                    description: document.getElementById('productDescription').value,
+                    category: document.getElementById('productCategory').value,
+                    image: imageBase64
+                };
+
+                const result = CatalogManager.addProduct(productData);
+                if (result) {
+                    showToast('Produto adicionado com sucesso!', 'success');
+                    clearForm();
+                    loadProducts();
+                } else {
+                    throw new Error('Erro ao adicionar produto');
+                }
+            } catch (error) {
+                console.error('Erro:', error);
+                showToast(error.message || 'Erro ao processar produto', 'error');
+            } finally {
+                submitButton.disabled = false;
+                submitButton.innerHTML = '<i class="fas fa-save"></i> Salvar Produto';
+            }
+        });
+
+        // Converter imagem para Base64
+        function convertImageToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = error => reject(error);
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // Carregar produtos
+        function loadProducts() {
+            const products = CatalogManager.loadProducts();
+            const container = document.getElementById('productsList');
+            container.innerHTML = '';
+
+            products.forEach(product => {
+                const card = document.createElement('div');
+                card.className = 'product-card';
+                card.innerHTML = `
+                    <div class="product-image" style="background-image: url(${product.image})"></div>
+                    <div class="product-info">
+                        <span class="product-category ${product.category}">${getCategoryName(product.category)}</span>
+                        <h3 class="product-title">${product.name}</h3>
+                        <p class="product-description">${product.description}</p>
+                        <div class="product-actions">
+                            <button class="btn btn-primary" onclick="editProduct('${product.id}')">
+                                <i class="fas fa-edit"></i>
+                                Editar
+                            </button>
+                            <button class="btn btn-danger" onclick="deleteProduct('${product.id}')">
+                                <i class="fas fa-trash"></i>
+                                Excluir
+                            </button>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        // Obter nome da categoria
+        function getCategoryName(category) {
+            const categories = {
+                'bags': 'Bags',
+                'bermudas': 'Bermudas',
+                'bones': 'Bonés',
+                'calcas': 'Calças',
+                'camisas': 'Camisas',
+                'moletons': 'Moletons'
+            };
+            return categories[category] || category;
+        }
+
+        // Limpar formulário
+        function clearForm() {
+            document.getElementById('productForm').reset();
+            document.getElementById('imagePreview').style.backgroundImage = '';
+            document.getElementById('imagePreview').style.display = 'none';
+        }
+
+        // Deletar produto
+        function deleteProduct(id) {
+            if (confirm('Tem certeza que deseja excluir este produto?')) {
+                if (CatalogManager.deleteProduct(id)) {
+                    showToast('Produto excluído com sucesso!');
+                    loadProducts();
+                } else {
+                    showToast('Erro ao excluir produto', 'error');
+                }
+            }
+        }
+
+        // Editar produto
+        function editProduct(id) {
+            const products = CatalogManager.loadProducts();
+            const product = products.find(p => p.id === id);
+            
+            if (product) {
+                document.getElementById('productName').value = product.name;
+                document.getElementById('productDescription').value = product.description;
+                document.getElementById('productCategory').value = product.category;
+                
+                const preview = document.getElementById('imagePreview');
+                preview.style.backgroundImage = `url(${product.image})`;
+                preview.style.display = 'block';
+                
+                CatalogManager.deleteProduct(id);
+                window.scrollTo(0, 0);
+            }
+        }
+
+        // Toast notification
+        function showToast(message, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+
+            setTimeout(() => {
+                toast.remove();
+            }, 3000);
+        }
+
+        // Carregar produtos inicialmente
+        loadProducts();
+
+        // Iniciar monitoramento de mudanças
+        CatalogManager.startMonitoring();
+    </script>
+</body>
+</html>
